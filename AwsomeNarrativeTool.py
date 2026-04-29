@@ -57,6 +57,15 @@ EN_DICT = {
     "淡入淡出": "Fade In/Out",
     "场次": "Scene",
     "ID": "ID",
+    "新建 '跳转起点' 节点": "New 'Jump Start' Node",
+    "新建 '跳转终点' 节点": "New 'Jump End' Node",
+    "跳转起点": "Jump Start",
+    "跳转终点": "Jump End",
+    "跳转标识": "Jump ID",
+    "跳转到": "Jump to ",
+    "未找到匹配的跳转终点：": "Cannot find matching Jump End: ",
+    "跳转标识为空": "Jump ID is empty",
+    "跳转节点(参数:": "Jump Node(Args:",
     
     # 属性面板字段名称
     "场次号": "Scene No",
@@ -79,6 +88,7 @@ EN_DICT = {
     "警告": "Warning",
     "未找到故事开始节点，无法确定导出顺序！\n将跳过导出，直接保存为空表。": "Cannot find 'Start' node, unable to determine export order!\nWill skip export and save as empty table.",
     "保存成功": "Saved Successfully",
+    "成功": "Success",
     "错误": "Error",
     "表格已导出到:\n": "Table successfully exported to:\n",
     "导出CSV失败: ": "Failed to export CSV: ",
@@ -143,7 +153,29 @@ EN_DICT = {
     "[等待点击继续...]": "[Waiting for click to continue...]",
     "导出失败: ": "Export Failed: ",
     "故事线已导出到:\n": "Storyline exported to:\n",
-    "编辑中 - ": "Editing - "
+    "编辑中 - ": "Editing - ",
+    
+    # 剧本编辑器新增翻译
+    "剧本编辑器": "Script Editor",
+    "添加行": "Add Row",
+    "删除行": "Delete Row",
+    "一键转换为蓝图大纲": "Convert to Blueprint",
+    "功能类型": "Function Type",
+    "分支选项": "Branch Option",
+    "特殊参数": "Special Args",
+    "转换成功！新故事线已添加到列表。": "Conversion successful! New storyline added to the list.",
+    
+    # 剧本编辑器迭代新增
+    "打开": "Open",
+    "保存": "Save",
+    "另存为": "Save As",
+    "导出...": "Export...",
+    "从蓝图导入": "Import Blueprint",
+    "导出成功:\n": "Export Successful:\n",
+    "选择要导入的蓝图:": "Select blueprint to import:",
+    "没有可用的蓝图！": "No blueprints available!",
+    "选择的蓝图为空！": "Selected blueprint is empty!",
+    "导入成功": "Import Successful"
 }
 
 def TR(text):
@@ -183,6 +215,14 @@ def export_to_table(parent_widget, state, default_name=""):
     start_nodes = [i for i, n in enumerate(nodes) if n["type"] == "Start"]
     visited = set()
     rows = []
+    
+    # 获取所有的JumpEnd节点，以便做逻辑连接穿越
+    jump_ends = {}
+    for i, n in enumerate(nodes):
+        if n["type"] == "JumpEnd":
+            jid = n["data"].get("跳转标识", "")
+            if jid:
+                jump_ends[jid] = i
     
     # 动态表头（支持中英文）
     fieldnames = [TR("场次号_对话ID"), TR("类型"), TR("说话人"), TR("情绪"), TR("景别"), TR("场景描述"), TR("对话台本"), TR("#注释"), TR("是否有转场"), TR("播放时长")]
@@ -236,6 +276,11 @@ def export_to_table(parent_widget, state, default_name=""):
             row[TR("播放时长")] = data.get('播放时长', '')
             rows.append(row)
             
+        if n_type == "JumpStart":
+            jid = data.get("跳转标识", "")
+            if jid in jump_ends:
+                dfs(jump_ends[jid])
+            
         for nxt in adj.get(curr_idx, []):
             dfs(nxt)
 
@@ -270,7 +315,7 @@ def filter_export_state(state):
     nodes, edges = state["nodes"], state["edges"]
     has_input = set(e["in_node"] for e in edges)
     
-    valid_node_indices = [idx for idx, n in enumerate(nodes) if n["type"] == "Start" or idx in has_input]
+    valid_node_indices = [idx for idx, n in enumerate(nodes) if n["type"] in ["Start", "JumpEnd"] or idx in has_input]
     if len(valid_node_indices) == len(nodes): return state
         
     new_state = {"nodes": [], "edges": []}
@@ -413,6 +458,16 @@ class Node(QGraphicsItem):
             self.add_port(is_output=False)
             self.add_port(is_output=True)
             self.data = {"是否淡入淡出": "是", "播放时长": "1"}
+        elif self.node_type == "JumpStart":
+            self.title = "跳转起点"
+            self.bg_color = QColor(216, 27, 96)
+            self.add_port(is_output=False)
+            self.data = {"跳转标识": "A", "播放时长": "1"}
+        elif self.node_type == "JumpEnd":
+            self.title = "跳转终点"
+            self.bg_color = QColor(194, 24, 91)
+            self.add_port(is_output=True)
+            self.data = {"跳转标识": "A", "播放时长": "0"}
 
     def add_port(self, is_output):
         port_list = self.outputs if is_output else self.inputs
@@ -523,6 +578,10 @@ class Node(QGraphicsItem):
             text = self.data.get("场景提示台本", "")
             display_text = text[:10] + ("..." if len(text) > 10 else "")
             painter.drawText(QRectF(8, 32, self.width-16, 50), Qt.AlignCenter, display_text)
+        elif self.node_type in ["JumpStart", "JumpEnd"]:
+            text = self.data.get("跳转标识", "")
+            display_text = text[:10] + ("..." if len(text) > 10 else "")
+            painter.drawText(QRectF(8, 32, self.width-16, 50), Qt.AlignCenter, f"{TR('跳转标识')}: {display_text}")
         elif self.node_type == "Branch":
             for i, opt in enumerate(self.data.get("options", [])):
                 opt_dict = opt if isinstance(opt, dict) else {"text": str(opt), "场次号": "", "对话ID": ""}
@@ -653,6 +712,12 @@ class NodeScene(QGraphicsScene):
             if node == start_node: return True
             if d > 500: return True
             visited.add(node)
+            if node.node_type == "JumpStart":
+                jid = node.data.get("跳转标识", "")
+                for n in self.nodes:
+                    if n.node_type == "JumpEnd" and n.data.get("跳转标识", "") == jid:
+                        if n not in visited:
+                            if dfs(n, d + 1): return True
             for port in node.outputs:
                 for edge in port.edges:
                     next_node = edge.port_in.node
@@ -1149,6 +1214,8 @@ class StoryOutlineWidget(QWidget):
             menu.addAction(TR("新建 '对话分支节点'"), lambda: self.scene.add_node("Branch", scene_pos))
             menu.addAction(TR("新建 '场景提示' 节点"), lambda: self.scene.add_node("ScenePrompt", scene_pos))
             menu.addAction(TR("新建 '转场' 节点"), lambda: self.scene.add_node("Transition", scene_pos))
+            menu.addAction(TR("新建 '跳转起点' 节点"), lambda: self.scene.add_node("JumpStart", scene_pos))
+            menu.addAction(TR("新建 '跳转终点' 节点"), lambda: self.scene.add_node("JumpEnd", scene_pos))
             if self.scene.clipboard:
                 menu.addAction(TR("粘贴 (Ctrl+V)"), lambda: self.paste_node(scene_pos))
         menu.exec_(self.view.mapToGlobal(pos))
@@ -1263,6 +1330,13 @@ class StoryOutlineWidget(QWidget):
                     node.is_duplicate_error = True
                     has_error = True
                     error_messages.append(f"{TR('对话分支节点(参数:')} {', '.join(unique_errors)})")
+                    
+            elif node.node_type in ["JumpStart", "JumpEnd"]:
+                jid = str(node.data.get("跳转标识", "")).strip()
+                if not jid:
+                    node.is_duplicate_error = True
+                    has_error = True
+                    error_messages.append(f"{TR('跳转节点(参数:')} {TR('跳转标识为空')})")
 
         if has_error:
             err_text = "\n".join(error_messages[:10])
@@ -1349,6 +1423,12 @@ class StoryOutlineWidget(QWidget):
         prev_node = node.inputs[0].edges[0].port_out.node
         if prev_node.node_type == "Dialogue":
             return prev_node.data.get("场次号", "未知场次")
+        elif prev_node.node_type == "JumpEnd":
+            jid = prev_node.data.get("跳转标识", "")
+            for n in self.scene.nodes:
+                if n.node_type == "JumpStart" and n.data.get("跳转标识", "") == jid:
+                    return self.get_prev_scene(n)
+            return "未知起点"
         return self.get_prev_scene(prev_node)
 
     def get_next_scene(self, node):
@@ -1356,6 +1436,12 @@ class StoryOutlineWidget(QWidget):
         next_node = node.outputs[0].edges[0].port_in.node
         if next_node.node_type == "Dialogue":
             return next_node.data.get("场次号", "未知场次")
+        elif next_node.node_type == "JumpStart":
+            jid = next_node.data.get("跳转标识", "")
+            for n in self.scene.nodes:
+                if n.node_type == "JumpEnd" and n.data.get("跳转标识", "") == jid:
+                    return self.get_next_scene(n)
+            return "未知终点"
         return self.get_next_scene(next_node)
 
     def step_execution(self):
@@ -1401,6 +1487,10 @@ class StoryOutlineWidget(QWidget):
                 self.pending_fade_out = True
             else:
                 self.perf_panel.append(f"<p><b>{TR('[直接转场]')}</b></p>")
+                
+        elif node.node_type == "JumpStart":
+            jid = node.data.get("跳转标识", "")
+            self.perf_panel.append(f"<p><font color='#888888'><i>{TR('跳转到')}{jid}</i></font></p>")
 
         elif node.node_type == "Branch":
             self.run_timer.stop() 
@@ -1425,7 +1515,21 @@ class StoryOutlineWidget(QWidget):
             self.perf_panel.append(f"<font color='#ff5252'><b>{TR('[触发断点，暂停运行。请切换到手动运行或重新开始]')}</b></font>")
             return
 
-        self.move_to_next_node(0)
+        if node.node_type == "JumpStart":
+            jid = node.data.get("跳转标识", "")
+            target_node = None
+            for n in self.scene.nodes:
+                if n.node_type == "JumpEnd" and n.data.get("跳转标识", "") == jid:
+                    target_node = n
+                    break
+            
+            if not target_node:
+                self.perf_panel.append(f"<p><font color='#ff5252'><b>{TR('未找到匹配的跳转终点：')}{jid}</b></font></p>")
+                self.current_exec_node = None
+            else:
+                self.current_exec_node = target_node
+        else:
+            self.move_to_next_node(0)
 
         if self.run_mode_combo.currentText() == TR("自动运行"):
             duration_sec = 1.0
@@ -1463,9 +1567,563 @@ class StoryOutlineWidget(QWidget):
         else:
             self.current_exec_node = None
 
+# ==========================================
+# 4. 新增剧本编辑器视图及逻辑
+# ==========================================
+class ScriptTableWidget(QTableWidget):
+    def __init__(self, rows, cols, dialog):
+        super().__init__(rows, cols)
+        self.dialog = dialog
+        
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.Copy):
+            self.copy_selection()
+        elif event.matches(QKeySequence.Paste):
+            self.paste_selection()
+        elif event.matches(QKeySequence.Cut):
+            self.copy_selection()
+            self.delete_selection()
+        else:
+            super().keyPressEvent(event)
+            
+    def copy_selection(self):
+        selection = self.selectedRanges()
+        if not selection: return
+        r = selection[0]
+        text = ""
+        for i in range(r.topRow(), r.bottomRow() + 1):
+            row_data = []
+            for j in range(r.leftColumn(), r.rightColumn() + 1):
+                if j == 0:
+                    widget = self.cellWidget(i, 0)
+                    row_data.append(widget.currentText() if widget else "")
+                else:
+                    item = self.item(i, j)
+                    row_data.append(item.text().replace('\n', ' ') if item else "")
+            text += "\t".join(row_data) + "\n"
+        QApplication.clipboard().setText(text)
+        
+    def paste_selection(self):
+        text = QApplication.clipboard().text()
+        if not text: return
+        
+        lines = text.strip('\n').split('\n')
+        current_row = self.currentRow()
+        current_col = self.currentColumn()
+        if current_row < 0: current_row = 0
+        if current_col < 0: current_col = 0
+        
+        self.blockSignals(True)
+        for i, line in enumerate(lines):
+            row = current_row + i
+            while row >= self.rowCount():
+                self.dialog.add_row()
+            cells = line.split('\t')
+            for j, val in enumerate(cells):
+                col = current_col + j
+                if col >= self.columnCount():
+                    break
+                if col == 0:
+                    widget = self.cellWidget(row, 0)
+                    if widget:
+                        idx = widget.findText(val)
+                        if idx >= 0: widget.setCurrentIndex(idx)
+                else:
+                    item = self.item(row, col)
+                    if not item:
+                        item = QTableWidgetItem()
+                        self.setItem(row, col, item)
+                    item.setText(val)
+        self.blockSignals(False)
+        self.dialog.check_duplicates()
+        
+    def delete_selection(self):
+        selection = self.selectedRanges()
+        if not selection: return
+        r = selection[0]
+        self.blockSignals(True)
+        for i in range(r.topRow(), r.bottomRow() + 1):
+            for j in range(r.leftColumn(), r.rightColumn() + 1):
+                if j != 0:
+                    item = self.item(i, j)
+                    if item: item.setText("")
+        self.blockSignals(False)
+        self.dialog.check_duplicates()
+
+class ScriptEditorDialog(QDialog):
+    def __init__(self, main_window, parent=None):
+        super().__init__(parent)
+        self.main_window = main_window
+        self.current_filepath = None
+        self.setWindowTitle(TR("剧本编辑器"))
+        self.resize(1100, 650)
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        
+        self.layout = QVBoxLayout(self)
+        
+        # Toolbar
+        self.toolbar = QHBoxLayout()
+        self.btn_open = QPushButton(TR("打开"))
+        self.btn_save = QPushButton(TR("保存"))
+        self.btn_save_as = QPushButton(TR("另存为"))
+        self.btn_export = QPushButton(TR("导出..."))
+        self.btn_import = QPushButton(TR("从蓝图导入"))
+        self.btn_import.setStyleSheet("background-color: #6a1b9a; border-color: #4a148c;")
+        
+        self.btn_add = QPushButton(TR("添加行"))
+        self.btn_del = QPushButton(TR("删除行"))
+        self.btn_convert = QPushButton(TR("一键转换为蓝图大纲"))
+        self.btn_convert.setStyleSheet("background-color: #0277bd; border-color: #01579b;")
+        
+        self.btn_open.clicked.connect(self.open_script)
+        self.btn_save.clicked.connect(self.save_script)
+        self.btn_save_as.clicked.connect(self.save_as_script)
+        self.btn_export.clicked.connect(self.export_script)
+        self.btn_import.clicked.connect(self.import_from_blueprint)
+        self.btn_add.clicked.connect(self.add_row)
+        self.btn_del.clicked.connect(self.del_row)
+        self.btn_convert.clicked.connect(self.convert_to_blueprint)
+        
+        self.toolbar.addWidget(self.btn_open)
+        self.toolbar.addWidget(self.btn_save)
+        self.toolbar.addWidget(self.btn_save_as)
+        self.toolbar.addWidget(self.btn_export)
+        self.toolbar.addWidget(self.btn_import)
+        self.toolbar.addSpacing(20)
+        self.toolbar.addWidget(self.btn_add)
+        self.toolbar.addWidget(self.btn_del)
+        self.toolbar.addStretch()
+        self.toolbar.addWidget(self.btn_convert)
+        self.layout.addLayout(self.toolbar)
+        
+        # Table
+        self.table = ScriptTableWidget(0, 11, self)
+        self.table.setHorizontalHeaderLabels([
+            TR("功能类型"), TR("场次号"), TR("对话ID"), TR("说话人"), 
+            TR("情绪"), TR("景别"), TR("场景描述"), TR("对话台本"), 
+            TR("注释"), TR("播放时长"), TR("特殊参数")
+        ])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.layout.addWidget(self.table)
+        
+        self.table.itemChanged.connect(self.check_duplicates)
+        
+        self.add_row()
+
+    def check_duplicates(self, item=None):
+        self.table.blockSignals(True)
+        counts = {}
+        for r in range(self.table.rowCount()):
+            widget = self.table.cellWidget(r, 0)
+            node_type = widget.currentText() if widget else ""
+            if node_type not in [TR("对话节点"), TR("分支选项")]:
+                continue
+            scene_item = self.table.item(r, 1)
+            did_item = self.table.item(r, 2)
+            scene = scene_item.text().strip() if scene_item else ""
+            did = did_item.text().strip() if did_item else ""
+            if scene and did:
+                key = f"{scene}_{did}"
+                counts[key] = counts.get(key, 0) + 1
+                
+        for r in range(self.table.rowCount()):
+            widget = self.table.cellWidget(r, 0)
+            node_type = widget.currentText() if widget else ""
+            scene_item = self.table.item(r, 1)
+            did_item = self.table.item(r, 2)
+            scene = scene_item.text().strip() if scene_item else ""
+            did = did_item.text().strip() if did_item else ""
+            
+            is_dup = False
+            if node_type in [TR("对话节点"), TR("分支选项")] and scene and did:
+                key = f"{scene}_{did}"
+                if counts.get(key, 0) > 1:
+                    is_dup = True
+                    
+            bg_brush = QBrush(QColor(150, 0, 0, 150)) if is_dup else QBrush()
+            
+            for c in range(1, self.table.columnCount()):
+                item_c = self.table.item(r, c)
+                if item_c:
+                    item_c.setBackground(bg_brush)
+
+        self.table.blockSignals(False)
+
+    def get_node_types(self):
+        return [
+            TR("对话节点"),
+            TR("对话分支节点"),
+            TR("分支选项"),
+            TR("备注节点"),
+            TR("场景提示"),
+            TR("转场"),
+            TR("跳转起点"),
+            TR("跳转终点")
+        ]
+
+    def add_row(self):
+        row = self.table.currentRow()
+        if row < 0:
+            row = self.table.rowCount()
+        else:
+            row += 1
+        self.table.insertRow(row)
+        
+        cb = QComboBox()
+        cb.addItems(self.get_node_types())
+        cb.currentIndexChanged.connect(lambda: self.check_duplicates())
+        self.table.setCellWidget(row, 0, cb)
+        
+        self.table.blockSignals(True)
+        for i in range(1, 11):
+            self.table.setItem(row, i, QTableWidgetItem(""))
+        self.table.setItem(row, 9, QTableWidgetItem("1"))
+        self.table.blockSignals(False)
+        self.check_duplicates()
+
+    def del_row(self):
+        row = self.table.currentRow()
+        if row >= 0:
+            self.table.removeRow(row)
+            self.check_duplicates()
+
+    def open_script(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, TR("打开"), "", "Script Files (*.json);;All Files (*)")
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                self.table.setRowCount(0)
+                self.current_filepath = file_path
+                for r, row_data in enumerate(data):
+                    self.add_row()
+                    widget = self.table.cellWidget(r, 0)
+                    if widget and "type" in row_data:
+                        idx = widget.findText(row_data["type"])
+                        if idx >= 0: widget.setCurrentIndex(idx)
+                    cols = row_data.get("cols", [])
+                    for c in range(len(cols)):
+                        if c + 1 < self.table.columnCount():
+                            item = self.table.item(r, c + 1)
+                            if item: item.setText(cols[c])
+                self.check_duplicates()
+            except Exception as e:
+                QMessageBox.critical(self, TR("错误"), str(e))
+
+    def save_script(self):
+        if not self.current_filepath:
+            self.save_as_script()
+        else:
+            self._save_to_file(self.current_filepath)
+
+    def save_as_script(self):
+        file_path, _ = QFileDialog.getSaveFileName(self, TR("另存为"), "", "Script Files (*.json);;All Files (*)")
+        if file_path:
+            self.current_filepath = file_path
+            self._save_to_file(file_path)
+
+    def _save_to_file(self, file_path):
+        data = []
+        for r in range(self.table.rowCount()):
+            widget = self.table.cellWidget(r, 0)
+            row_data = {"type": widget.currentText() if widget else ""}
+            row_data["cols"] = []
+            for c in range(1, self.table.columnCount()):
+                item = self.table.item(r, c)
+                row_data["cols"].append(item.text() if item else "")
+            data.append(row_data)
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            QMessageBox.information(self, TR("成功"), TR("保存成功"))
+        except Exception as e:
+            QMessageBox.critical(self, TR("错误"), str(e))
+
+    def export_script(self):
+        file_path, ext = QFileDialog.getSaveFileName(
+            self, TR("导出..."), "", 
+            "Excel Files (*.xlsx);;CSV Files (*.csv);;Text Files (*.txt)"
+        )
+        if not file_path: return
+        
+        headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
+        rows = []
+        for r in range(self.table.rowCount()):
+            widget = self.table.cellWidget(r, 0)
+            row_data = [widget.currentText() if widget else ""]
+            for c in range(1, self.table.columnCount()):
+                item = self.table.item(r, c)
+                row_data.append(item.text() if item else "")
+            rows.append(row_data)
+            
+        if file_path.endswith('.xlsx') or 'xlsx' in ext:
+            try:
+                import pandas as pd
+                df = pd.DataFrame(rows, columns=headers)
+                df.to_excel(file_path, index=False)
+                QMessageBox.information(self, TR("成功"), TR("导出成功:\n") + file_path)
+            except ImportError:
+                QMessageBox.critical(self, TR("错误"), TR("缺少 pandas 或 openpyxl 库，无法导出为 xlsx。\n请尝试导出为 csv 格式，或者通过命令行安装依赖：\n pip install pandas openpyxl"))
+            except Exception as e:
+                QMessageBox.critical(self, TR("错误"), TR("导出失败: ") + str(e))
+        elif file_path.endswith('.csv') or 'csv' in ext:
+            import csv
+            try:
+                with open(file_path, 'w', newline='', encoding='utf-8-sig') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(headers)
+                    writer.writerows(rows)
+                QMessageBox.information(self, TR("成功"), TR("导出成功:\n") + file_path)
+            except Exception as e:
+                QMessageBox.critical(self, TR("错误"), TR("导出失败: ") + str(e))
+        else:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write('\t'.join(headers) + '\n')
+                    for r_data in rows:
+                        f.write('\t'.join(r_data) + '\n')
+                QMessageBox.information(self, TR("成功"), TR("导出成功:\n") + file_path)
+            except Exception as e:
+                QMessageBox.critical(self, TR("错误"), TR("导出失败: ") + str(e))
+
+    def import_from_blueprint(self):
+        stories = list(self.main_window.list_widget.stories.keys())
+        if not stories:
+            QMessageBox.warning(self, TR("提示"), TR("没有可用的蓝图！"))
+            return
+            
+        name, ok = QInputDialog.getItem(self, TR("从蓝图导入"), TR("选择要导入的蓝图:"), stories, 0, False)
+        if ok and name:
+            state = self.main_window.list_widget.stories[name]
+            if self.main_window.current_story_name == name and getattr(self.main_window.outline_widget.scene, '_is_dirty', False):
+                state = self.main_window.outline_widget.scene.serialize_scene()
+                
+            if not state or not state.get("nodes"):
+                QMessageBox.warning(self, TR("提示"), TR("选择的蓝图为空！"))
+                return
+                
+            self._load_blueprint_to_table(state)
+
+    def _load_blueprint_to_table(self, state):
+        self.table.setRowCount(0)
+        nodes = state["nodes"]
+        edges = state["edges"]
+        
+        adj = {i: [] for i in range(len(nodes))}
+        edges_by_out = {}
+        for e in edges:
+            out_node = e["out_node"]
+            if out_node not in edges_by_out:
+                edges_by_out[out_node] = []
+            edges_by_out[out_node].append(e)
+        
+        for out_node, es in edges_by_out.items():
+            es.sort(key=lambda x: x["out_port"])
+            for e in es:
+                if out_node in adj:
+                    adj[out_node].append(e["in_node"])
+                    
+        start_nodes = [i for i, n in enumerate(nodes) if n["type"] == "Start"]
+        visited = set()
+        
+        jump_ends = {}
+        for i, n in enumerate(nodes):
+            if n["type"] == "JumpEnd":
+                jid = n["data"].get("跳转标识", "")
+                if jid:
+                    jump_ends[jid] = i
+
+        def add_table_row(n_type_str, data_dict):
+            r = self.table.rowCount()
+            self.add_row()
+            widget = self.table.cellWidget(r, 0)
+            if widget:
+                idx = widget.findText(n_type_str)
+                if idx >= 0: widget.setCurrentIndex(idx)
+            
+            mapping = {
+                1: "场次号", 2: "对话ID", 3: "说话人", 4: "情绪", 5: "景别",
+                6: "场景描述", 7: "对话台本", 8: "注释", 9: "播放时长", 10: "特殊参数"
+            }
+            for col, key in mapping.items():
+                if key in data_dict:
+                    item = self.table.item(r, col)
+                    if item: item.setText(str(data_dict[key]))
+
+        def dfs(curr_idx):
+            if curr_idx in visited or curr_idx >= len(nodes):
+                return
+            visited.add(curr_idx)
+            node = nodes[curr_idx]
+            n_type = node["type"]
+            data = node["data"]
+            
+            if n_type == "Dialogue":
+                row_data = data.copy()
+                add_table_row(TR("对话节点"), row_data)
+            elif n_type == "Branch":
+                add_table_row(TR("对话分支节点"), {})
+                for opt in data.get("options", []):
+                    opt_dict = opt if isinstance(opt, dict) else {"text": str(opt), "场次号": "", "对话ID": "", "注释": ""}
+                    row_data = {
+                        "场次号": opt_dict.get('场次号', ''),
+                        "对话ID": opt_dict.get('对话ID', ''),
+                        "对话台本": opt_dict.get('text', ''),
+                        "注释": opt_dict.get('注释', '')
+                    }
+                    add_table_row(TR("分支选项"), row_data)
+            elif n_type == "Note":
+                row_data = {"对话台本": data.get("备注", ""), "播放时长": data.get("播放时长", "0")}
+                add_table_row(TR("备注节点"), row_data)
+            elif n_type == "ScenePrompt":
+                row_data = {"对话台本": data.get("场景提示台本", ""), "播放时长": data.get("播放时长", "1")}
+                add_table_row(TR("场景提示"), row_data)
+            elif n_type == "Transition":
+                row_data = {"特殊参数": data.get("是否淡入淡出", TR("是")), "播放时长": data.get("播放时长", "1")}
+                add_table_row(TR("转场"), row_data)
+            elif n_type == "JumpStart":
+                row_data = {"对话台本": data.get("跳转标识", ""), "播放时长": data.get("播放时长", "1")}
+                add_table_row(TR("跳转起点"), row_data)
+            elif n_type == "JumpEnd":
+                row_data = {"对话台本": data.get("跳转标识", ""), "播放时长": "0"}
+                add_table_row(TR("跳转终点"), row_data)
+                
+            if n_type == "JumpStart":
+                jid = data.get("跳转标识", "")
+                if jid in jump_ends:
+                    dfs(jump_ends[jid])
+                    
+            for nxt in adj.get(curr_idx, []):
+                dfs(nxt)
+
+        if start_nodes:
+            self.table.blockSignals(True)
+            dfs(start_nodes[0])
+            self.table.blockSignals(False)
+            self.check_duplicates()
+            QMessageBox.information(self, TR("成功"), TR("导入成功"))
+        else:
+            QMessageBox.warning(self, TR("警告"), TR("未找到故事开始节点！"))
+
+    def convert_to_blueprint(self):
+        name, ok = QInputDialog.getText(self, TR("新建"), TR("输入故事线名称:"))
+        if not ok or not name:
+            return
+        if name in self.main_window.list_widget.stories:
+            QMessageBox.warning(self, TR("错误"), TR("名称已存在！"))
+            return
+            
+        nodes = []
+        edges = []
+        
+        nodes.append({
+            "type": "Start",
+            "pos": (0, 0),
+            "data": {"播放时长": "1"}
+        })
+        
+        pos_x = 220
+        prev_node_idx = 0 
+        last_branch_idx = -1
+        
+        type_map = {
+            TR("对话节点"): "Dialogue",
+            TR("对话分支节点"): "Branch",
+            TR("备注节点"): "Note",
+            TR("场景提示"): "ScenePrompt",
+            TR("转场"): "Transition",
+            TR("跳转起点"): "JumpStart",
+            TR("跳转终点"): "JumpEnd"
+        }
+        
+        for row in range(self.table.rowCount()):
+            cb = self.table.cellWidget(row, 0)
+            if not cb: continue
+            node_type_str = cb.currentText()
+            
+            def get_text(col):
+                item = self.table.item(row, col)
+                return item.text().strip() if item else ""
+                
+            if node_type_str == TR("分支选项"):
+                if last_branch_idx != -1:
+                    opt = {
+                        "text": get_text(7),
+                        "场次号": get_text(1),
+                        "对话ID": get_text(2),
+                        "注释": get_text(8)
+                    }
+                    nodes[last_branch_idx]["data"]["options"].append(opt)
+                continue
+                
+            internal_type = type_map.get(node_type_str)
+            if not internal_type: continue
+            
+            data = {}
+            if internal_type == "Dialogue":
+                data = {
+                    "场次号": get_text(1), "对话ID": get_text(2), "说话人": get_text(3),
+                    "情绪": get_text(4), "景别": get_text(5), "场景描述": get_text(6),
+                    "对话台本": get_text(7), "注释": get_text(8), "播放时长": get_text(9) or "1",
+                    "注释透明度": 80
+                }
+            elif internal_type == "Branch":
+                data = {"options": []}
+            elif internal_type == "Note":
+                data = {"备注": get_text(7), "字体颜色": "Gray", "播放时长": get_text(9) or "0"}
+            elif internal_type == "ScenePrompt":
+                data = {"场景提示台本": get_text(7), "播放时长": get_text(9) or "1"}
+            elif internal_type == "Transition":
+                sp = get_text(10)
+                data = {"是否淡入淡出": sp if sp in [TR("是"), TR("否"), "是", "否"] else TR("是"), "播放时长": get_text(9) or "1"}
+            elif internal_type == "JumpStart":
+                data = {"跳转标识": get_text(7), "播放时长": get_text(9) or "1"}
+            elif internal_type == "JumpEnd":
+                data = {"跳转标识": get_text(7), "播放时长": "0"}
+                
+            node = {
+                "type": internal_type,
+                "pos": (pos_x, 0),
+                "data": data
+            }
+            
+            nodes.append(node)
+            current_idx = len(nodes) - 1
+            
+            if internal_type == "Branch":
+                last_branch_idx = current_idx
+            else:
+                last_branch_idx = -1
+                
+            has_input = internal_type in ["Dialogue", "Note", "Branch", "ScenePrompt", "Transition", "JumpStart"]
+            if prev_node_idx is not None and has_input:
+                prev_type = nodes[prev_node_idx]["type"]
+                has_output = prev_type in ["Start", "Dialogue", "Note", "Branch", "ScenePrompt", "Transition", "JumpEnd"]
+                if has_output:
+                    edges.append({
+                        "out_node": prev_node_idx,
+                        "out_port": 0,
+                        "in_node": current_idx,
+                        "in_port": 0
+                    })
+            
+            if internal_type == "JumpStart":
+                prev_node_idx = None
+            else:
+                prev_node_idx = current_idx
+                
+            pos_x += 220
+            
+        state = {"nodes": nodes, "edges": edges}
+        self.main_window.list_widget.make_top_story(name, state)
+        QMessageBox.information(self, TR("成功"), TR("转换成功！新故事线已添加到列表。"))
+        self.accept()
+
 
 # ==========================================
-# 4. 故事管理视图 (列表UI)
+# 5. 故事管理视图 (列表UI)
 # ==========================================
 
 class StoryListWidget(QWidget):
@@ -1504,6 +2162,8 @@ class StoryListWidget(QWidget):
         self.btn_rename = QPushButton(TR("重命名故事线"))
         self.btn_export = QPushButton(TR("另存为故事线"))
         self.btn_export_table = QPushButton(TR("导出为表格"))
+        self.btn_script_editor = QPushButton(TR("剧本编辑器"))
+        self.btn_script_editor.setStyleSheet("background-color: #00695c; border-color: #004d40;")
         self.btn_delete = QPushButton(TR("删除故事线"))
         self.btn_delete.setStyleSheet("background-color: #c62828; border-color: #b71c1c;")
         
@@ -1512,6 +2172,7 @@ class StoryListWidget(QWidget):
         self.btn_rename.clicked.connect(self.rename_story)
         self.btn_export.clicked.connect(self.export_story_list)
         self.btn_export_table.clicked.connect(self.export_table_list_action)
+        self.btn_script_editor.clicked.connect(self.open_script_editor)
         self.btn_delete.clicked.connect(self.delete_story)
 
         btn_layout.addWidget(self.btn_switch_lang)
@@ -1520,6 +2181,7 @@ class StoryListWidget(QWidget):
         btn_layout.addWidget(self.btn_rename)
         btn_layout.addWidget(self.btn_export)
         btn_layout.addWidget(self.btn_export_table)
+        btn_layout.addWidget(self.btn_script_editor)
         btn_layout.addStretch()
         btn_layout.addWidget(self.btn_delete)
         
@@ -1548,6 +2210,7 @@ class StoryListWidget(QWidget):
         self.btn_rename.setText(TR("重命名故事线"))
         self.btn_export.setText(TR("另存为故事线"))
         self.btn_export_table.setText(TR("导出为表格"))
+        self.btn_script_editor.setText(TR("剧本编辑器"))
         self.btn_delete.setText(TR("删除故事线"))
         self.watermark_label.setText(TR("伍冠宇出品 必属精品"))
         self.btn_switch_lang.setText("Switch to English" if GLOBAL_LANG == "CN" else "切换为中文")
@@ -1663,6 +2326,10 @@ class StoryListWidget(QWidget):
             return
         export_to_table(self, state, name)
 
+    def open_script_editor(self):
+        dlg = ScriptEditorDialog(self.main_window, self)
+        dlg.exec_()
+
     def delete_story(self):
         name = self.get_selected_name()
         if name and name in self.stories:
@@ -1677,7 +2344,7 @@ class StoryListWidget(QWidget):
                 self.update_list()
 
 # ==========================================
-# 5. 主窗口
+# 6. 主窗口
 # ==========================================
 
 class MainWindow(QMainWindow):
@@ -1687,7 +2354,6 @@ class MainWindow(QMainWindow):
         self.resize(1280, 850)
         self.setMinimumSize(1024, 768)
         
-        # 二次确保主窗口强制识别 ICO 任务栏/窗口图标
         if getattr(sys, 'frozen', False):
             base_dir = os.path.dirname(sys.executable)
         else:
@@ -1877,10 +2543,27 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     border: none;
     background: none;
 }
+QTableWidget {
+    background-color: #252526;
+    border: 1px solid #3e3e42;
+    gridline-color: #3e3e42;
+    color: #e0e0e0;
+    selection-background-color: #0277bd;
+}
+QHeaderView::section {
+    background-color: #333333;
+    padding: 6px;
+    border: 1px solid #3e3e42;
+    font-weight: bold;
+    color: #e0e0e0;
+}
+QTableCornerButton::section {
+    background-color: #333333;
+    border: 1px solid #3e3e42;
+}
 """
 
 if __name__ == "__main__":
-    # 强制在Windows系统中声明独立的应用程序ID，以确保任务栏能正确加载和显示自定义的窗口图标
     try:
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("wuguanyu.storyeditor.1.0")
@@ -1889,7 +2572,6 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
     
-    # 获取运行目录逻辑，兼容打包环境
     if getattr(sys, 'frozen', False):
         base_dir = os.path.dirname(sys.executable)
     else:
