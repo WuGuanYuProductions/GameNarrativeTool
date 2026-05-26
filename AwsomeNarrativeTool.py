@@ -155,7 +155,7 @@ EN_DICT = {
     "故事线已导出到:\n": "Storyline exported to:\n",
     "编辑中 - ": "Editing - ",
     
-    # 剧本编辑器新增翻译
+    # 剧本编辑器及本地化
     "剧本编辑器": "Script Editor",
     "添加行": "Add Row",
     "删除行": "Delete Row",
@@ -164,8 +164,6 @@ EN_DICT = {
     "分支选项": "Branch Option",
     "特殊参数": "Special Args",
     "转换成功！新故事线已添加到列表。": "Conversion successful! New storyline added to the list.",
-    
-    # 剧本编辑器迭代新增
     "打开": "Open",
     "保存": "Save",
     "另存为": "Save As",
@@ -175,13 +173,79 @@ EN_DICT = {
     "选择要导入的蓝图:": "Select blueprint to import:",
     "没有可用的蓝图！": "No blueprints available!",
     "选择的蓝图为空！": "Selected blueprint is empty!",
-    "导入成功": "Import Successful"
+    "导入成功": "Import Successful",
+    
+    # 新增本地化相关
+    "管理本地化": "Manage Locales",
+    "选择语言:": "Select Locale:",
+    "默认": "Default",
+    "输入语言名称，如 English": "Enter locale, e.g. English",
+    "确认": "Confirm",
+    "取消/关闭": "Cancel/Close",
+    
+    # 运行时缺少本地化台本警告
+    "播放语言:": "Play Lang:",
+    "[警告] 节点(场次:": "[Warning] Node(Scene:",
+    ", ID:": ", ID:",
+    ")缺少本地化台本:": ") missing locale script:",
+    "，已停止运行。": ", running stopped.",
+    "[警告] 分支(场次:": "[Warning] Branch(Scene:",
 }
 
 def TR(text):
     if GLOBAL_LANG == "EN":
         return EN_DICT.get(text, text)
     return text
+
+# ==========================================
+# 本地化管理窗口
+# ==========================================
+class LocalizationDialog(QDialog):
+    def __init__(self, main_window, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(TR("管理本地化"))
+        self.main_window = main_window
+        self.resize(320, 400)
+        
+        layout = QVBoxLayout(self)
+        
+        h_layout = QHBoxLayout()
+        self.input_edit = QLineEdit()
+        self.input_edit.setPlaceholderText(TR("输入语言名称，如 English"))
+        self.btn_confirm = QPushButton(TR("确认"))
+        h_layout.addWidget(self.input_edit)
+        h_layout.addWidget(self.btn_confirm)
+        layout.addLayout(h_layout)
+        
+        self.list_widget = QListWidget()
+        self.list_widget.addItems(self.main_window.project_locales)
+        layout.addWidget(self.list_widget)
+        
+        btn_layout = QHBoxLayout()
+        self.btn_delete = QPushButton(TR("删除"))
+        self.btn_cancel = QPushButton(TR("取消/关闭"))
+        btn_layout.addWidget(self.btn_delete)
+        btn_layout.addWidget(self.btn_cancel)
+        layout.addLayout(btn_layout)
+        
+        self.btn_confirm.clicked.connect(self.add_lang)
+        self.btn_delete.clicked.connect(self.del_lang)
+        self.btn_cancel.clicked.connect(self.accept)
+        
+    def add_lang(self):
+        lang = self.input_edit.text().strip()
+        if lang and lang not in self.main_window.project_locales:
+            self.main_window.project_locales.append(lang)
+            self.list_widget.addItem(lang)
+            self.input_edit.clear()
+            
+    def del_lang(self):
+        row = self.list_widget.currentRow()
+        if row >= 0:
+            lang = self.list_widget.item(row).text()
+            self.main_window.project_locales.remove(lang)
+            self.list_widget.takeItem(row)
+
 
 # ==========================================
 # 辅助工具函数：将故事线导出为表格结构
@@ -197,6 +261,7 @@ def export_to_table(parent_widget, state, default_name=""):
         
     nodes = state["nodes"]
     edges = state["edges"]
+    project_locales = state.get("locales", [])
     
     adj = {i: [] for i in range(len(nodes))}
     edges_by_out = {}
@@ -216,7 +281,6 @@ def export_to_table(parent_widget, state, default_name=""):
     visited = set()
     rows = []
     
-    # 获取所有的JumpEnd节点，以便做逻辑连接穿越
     jump_ends = {}
     for i, n in enumerate(nodes):
         if n["type"] == "JumpEnd":
@@ -224,8 +288,9 @@ def export_to_table(parent_widget, state, default_name=""):
             if jid:
                 jump_ends[jid] = i
     
-    # 动态表头（支持中英文）
+    # 动态表头（支持中英文）+ 多语言本地化列
     fieldnames = [TR("场次号_对话ID"), TR("类型"), TR("说话人"), TR("情绪"), TR("景别"), TR("场景描述"), TR("对话台本"), TR("#注释"), TR("是否有转场"), TR("播放时长")]
+    fieldnames.extend(project_locales)
     
     def dfs(curr_idx):
         if curr_idx in visited or curr_idx >= len(nodes):
@@ -248,6 +313,8 @@ def export_to_table(parent_widget, state, default_name=""):
             row[TR("对话台本")] = data.get('对话台本', '')
             row[TR("#注释")] = data.get('注释', '')
             row[TR("播放时长")] = data.get('播放时长', '')
+            for l in project_locales:
+                row[l] = data.get(f"对话台本_{l}", "")
             rows.append(row)
             
         elif n_type == "Branch":
@@ -260,6 +327,8 @@ def export_to_table(parent_widget, state, default_name=""):
                 row[TR("场次号_对话ID")] = f"{scene}_{did}" if scene and did else (scene or did)
                 row[TR("对话台本")] = opt_dict.get('text', '')
                 row[TR("#注释")] = opt_dict.get('注释', '')
+                for l in project_locales:
+                    row[l] = opt_dict.get(f"text_{l}", "")
                 rows.append(row)
                 
         elif n_type == "ScenePrompt":
@@ -318,7 +387,7 @@ def filter_export_state(state):
     valid_node_indices = [idx for idx, n in enumerate(nodes) if n["type"] in ["Start", "JumpEnd"] or idx in has_input]
     if len(valid_node_indices) == len(nodes): return state
         
-    new_state = {"nodes": [], "edges": []}
+    new_state = {"nodes": [], "edges": [], "locales": state.get("locales", [])}
     old_to_new = {}
     for new_idx, old_idx in enumerate(valid_node_indices):
         new_state["nodes"].append(nodes[old_idx])
@@ -500,6 +569,28 @@ class Node(QGraphicsItem):
     def paint(self, painter, option, widget):
         rect = QRectF(0, 0, self.width, self.height)
         
+        # 检查本地化缺失，变为浅黄色背景提示
+        is_missing_locale = False
+        if hasattr(self.scene_ref, "main_window"):
+            project_locales = getattr(self.scene_ref.main_window, "project_locales", [])
+            if project_locales:
+                if self.node_type == "Dialogue":
+                    if not self.data.get("对话台本", "").strip():
+                        is_missing_locale = True
+                    for l in project_locales:
+                        if not self.data.get(f"对话台本_{l}", "").strip():
+                            is_missing_locale = True
+                            break
+                elif self.node_type == "Branch":
+                    for opt in self.data.get("options", []):
+                        if isinstance(opt, dict):
+                            if not opt.get("text", "").strip():
+                                is_missing_locale = True
+                            for l in project_locales:
+                                if not opt.get(f"text_{l}", "").strip():
+                                    is_missing_locale = True
+                                    break
+        
         painter.setBrush(QColor(0, 0, 0, 60))
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(rect.translated(3, 3), 6, 6)
@@ -524,7 +615,9 @@ class Node(QGraphicsItem):
             painter.drawText(bubble_rect, Qt.AlignCenter, display_note)
             painter.setOpacity(1.0)
 
-        painter.setBrush(self.bg_color)
+        draw_bg_color = QColor(255, 235, 59, 200) if is_missing_locale else self.bg_color
+        painter.setBrush(draw_bg_color)
+
         pen_color = QColor(255, 255, 255, 60)
         pen_width = 1.5
         
@@ -537,6 +630,9 @@ class Node(QGraphicsItem):
         elif self.is_breakpoint: 
             pen_color = QColor(255, 82, 82)
             pen_width = 3
+        elif is_missing_locale:
+            pen_color = QColor(255, 200, 0)
+            pen_width = 2.5
         elif self.isSelected(): 
             pen_color = QColor(255, 215, 0)
             pen_width = 2.5
@@ -544,12 +640,13 @@ class Node(QGraphicsItem):
         painter.setPen(QPen(pen_color, pen_width))
         painter.drawRoundedRect(rect, 6, 6)
 
-        painter.setBrush(QColor(0, 0, 0, 80))
+        painter.setBrush(QColor(0, 0, 0, 40) if is_missing_locale else QColor(0, 0, 0, 80))
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(0, 0, self.width, 26, 6, 6)
         painter.drawRect(0, 20, self.width, 6) 
         
-        painter.setPen(Qt.white)
+        text_color = Qt.black if is_missing_locale else Qt.white
+        painter.setPen(text_color)
         font = painter.font()
         font.setBold(True)
         painter.setFont(font)
@@ -641,7 +738,10 @@ class NodeScene(QGraphicsScene):
             self.set_dirty(True)
 
     def serialize_scene(self):
-        state = {"nodes": [], "edges": []}
+        state = {"nodes": [], "edges": [], "locales": []}
+        if hasattr(self, "main_window"):
+            state["locales"] = getattr(self.main_window, "project_locales", [])
+            
         node_to_idx = {node: idx for idx, node in enumerate(self.nodes)}
         for node in self.nodes:
             state["nodes"].append({
@@ -671,6 +771,11 @@ class NodeScene(QGraphicsScene):
     def deserialize_scene(self, state):
         self.is_undoing = True
         self.clear_scene_completely()
+        
+        if hasattr(self, "main_window"):
+            self.main_window.project_locales = state.get("locales", [])
+            if hasattr(self.main_window, "outline_widget"):
+                self.main_window.outline_widget.update_playback_lang_combo()
         
         idx_to_node = {}
         for idx, n_data in enumerate(state.get("nodes", [])):
@@ -919,6 +1024,9 @@ class PropertyPanel(QWidget):
             if key == "options": 
                 self.build_branch_ui(node)
                 continue
+            
+            if key.startswith("对话台本_") or key.startswith("text_"):
+                continue
                 
             if key == "是否淡入淡出":
                 cb = QComboBox()
@@ -934,7 +1042,51 @@ class PropertyPanel(QWidget):
                 slider.valueChanged.connect(lambda v, k=key: self.save_data(k, v))
                 self.form_layout.addRow(TR(key), slider)
                 
-            elif key in ["对话台本", "注释", "场景描述", "备注", "场景提示台本"]:
+            elif key == "对话台本":
+                container = QWidget()
+                v_layout = QVBoxLayout(container)
+                v_layout.setContentsMargins(0, 0, 0, 0)
+                v_layout.setSpacing(4)
+                
+                cb_layout = QHBoxLayout()
+                cb_layout.addWidget(QLabel(TR("选择语言:")))
+                locale_cb = QComboBox()
+                locale_cb.addItem(TR("默认"))
+                for l in self.scene.main_window.project_locales:
+                    locale_cb.addItem(l)
+                cb_layout.addWidget(locale_cb)
+                cb_layout.addStretch()
+                v_layout.addLayout(cb_layout)
+                
+                edit = QTextEdit()
+                edit.setFixedHeight(75)
+                edit.setText(str(val))
+                
+                def update_text_on_locale_change(idx, current_cb=locale_cb, current_edit=edit):
+                    current_lang = current_cb.currentText()
+                    if current_lang == TR("默认"):
+                        text = self.current_node.data.get("对话台本", "")
+                    else:
+                        text = self.current_node.data.get(f"对话台本_{current_lang}", "")
+                    current_edit.blockSignals(True)
+                    current_edit.setText(str(text))
+                    current_edit.blockSignals(False)
+                    
+                locale_cb.currentIndexChanged.connect(update_text_on_locale_change)
+                
+                def save_text(current_cb=locale_cb, current_edit=edit):
+                    current_lang = current_cb.currentText()
+                    if current_lang == TR("默认"):
+                        self.save_data("对话台本", current_edit.toPlainText())
+                    else:
+                        self.save_data(f"对话台本_{current_lang}", current_edit.toPlainText())
+                        
+                edit.textChanged.connect(lambda: save_text())
+                
+                v_layout.addWidget(edit)
+                self.form_layout.addRow(TR(key), container)
+                
+            elif key in ["注释", "场景描述", "备注", "场景提示台本"]:
                 edit = QTextEdit()
                 edit.setFixedHeight(75)
                 edit.setText(str(val))
@@ -966,9 +1118,40 @@ class PropertyPanel(QWidget):
             v_layout.setContentsMargins(0, 0, 0, 5)
             v_layout.setSpacing(6)
             
+            cb_layout = QHBoxLayout()
+            cb_layout.addWidget(QLabel(TR("选择语言:")))
+            locale_cb = QComboBox()
+            locale_cb.addItem(TR("默认"))
+            for l in self.scene.main_window.project_locales:
+                locale_cb.addItem(l)
+            cb_layout.addWidget(locale_cb)
+            cb_layout.addStretch()
+            v_layout.addLayout(cb_layout)
+            
             edit_text = QLineEdit(opt.get("text", ""))
             edit_text.setPlaceholderText(TR("选项文本"))
-            edit_text.textChanged.connect(lambda text, idx=i: self.update_branch_dict(idx, "text", text))
+            
+            def update_branch_text_on_locale_change(idx, current_cb=locale_cb, current_edit=edit_text, opt_idx=i):
+                current_lang = current_cb.currentText()
+                opt_data = self.current_node.data["options"][opt_idx]
+                if current_lang == TR("默认"):
+                    text = opt_data.get("text", "")
+                else:
+                    text = opt_data.get(f"text_{current_lang}", "")
+                current_edit.blockSignals(True)
+                current_edit.setText(str(text))
+                current_edit.blockSignals(False)
+                
+            locale_cb.currentIndexChanged.connect(update_branch_text_on_locale_change)
+            
+            def save_branch_text(text, current_cb=locale_cb, opt_idx=i):
+                current_lang = current_cb.currentText()
+                if current_lang == TR("默认"):
+                    self.update_branch_dict(opt_idx, "text", text)
+                else:
+                    self.update_branch_dict(opt_idx, f"text_{current_lang}", text)
+                    
+            edit_text.textChanged.connect(save_branch_text)
             
             h_layout = QHBoxLayout()
             edit_scene = QLineEdit(opt.get("场次号", ""))
@@ -1042,7 +1225,14 @@ class StoryOutlineWidget(QWidget):
         self.run_mode_combo.addItems([TR("自动运行"), TR("手动运行")])
         self.lbl_run_mode = QLabel(TR("运行模式:"))
         
+        # 新增播放语言下拉选单
+        self.playback_lang_combo = QComboBox()
+        self.lbl_playback_lang = QLabel(TR("播放语言:"))
+        self.update_playback_lang_combo()
+        
         self.btn_center_start = QPushButton(TR("回到故事开始"))
+        self.btn_manage_locales = QPushButton(TR("管理本地化"))
+        self.btn_manage_locales.setStyleSheet("background-color: #f57f17; border-color: #fbc02d;")
         self.btn_save_outline = QPushButton(TR("保存故事线"))
         self.btn_export = QPushButton(TR("另存为故事线")) 
         self.btn_export_table = QPushButton(TR("导出为表格")) 
@@ -1052,9 +1242,12 @@ class StoryOutlineWidget(QWidget):
         self.toolbar.addStretch()
         self.toolbar.addWidget(self.lbl_run_mode)
         self.toolbar.addWidget(self.run_mode_combo)
+        self.toolbar.addWidget(self.lbl_playback_lang)
+        self.toolbar.addWidget(self.playback_lang_combo)
         self.toolbar.addWidget(self.btn_play)
         self.toolbar.addWidget(self.btn_stop)
         self.toolbar.addWidget(self.btn_center_start)
+        self.toolbar.addWidget(self.btn_manage_locales)
         self.toolbar.addWidget(self.btn_save_outline)
         self.toolbar.addWidget(self.btn_export)
         self.toolbar.addWidget(self.btn_export_table)
@@ -1063,6 +1256,7 @@ class StoryOutlineWidget(QWidget):
 
         self.h_layout = QHBoxLayout()
         self.scene = NodeScene()
+        self.scene.main_window = self.main_window
         self.scene.selectionChanged.connect(self.on_selection_changed)
         self.scene.dirty_changed.connect(self.update_title)
         
@@ -1103,10 +1297,35 @@ class StoryOutlineWidget(QWidget):
         self.btn_play.clicked.connect(self.play_logic)
         self.btn_stop.clicked.connect(self.stop_logic)
         self.btn_center_start.clicked.connect(self.center_to_start)
+        self.btn_manage_locales.clicked.connect(self.manage_locales)
         self.btn_save_outline.clicked.connect(self.save_story)
         self.btn_export.clicked.connect(self.export_story)
         self.btn_export_table.clicked.connect(self.export_table_action)
         self.btn_back.clicked.connect(self.on_back_clicked)
+
+    def update_playback_lang_combo(self):
+        curr_text = self.playback_lang_combo.currentText()
+        self.playback_lang_combo.blockSignals(True)
+        self.playback_lang_combo.clear()
+        self.playback_lang_combo.addItem(TR("默认"))
+        if hasattr(self.main_window, 'project_locales'):
+            for l in self.main_window.project_locales:
+                self.playback_lang_combo.addItem(l)
+        
+        idx = self.playback_lang_combo.findText(curr_text)
+        if idx >= 0:
+            self.playback_lang_combo.setCurrentIndex(idx)
+        else:
+            self.playback_lang_combo.setCurrentIndex(0)
+        self.playback_lang_combo.blockSignals(False)
+
+    def manage_locales(self):
+        dlg = LocalizationDialog(self.main_window, self)
+        dlg.exec_()
+        self.prop_panel.update_panel()
+        self.update_playback_lang_combo()
+        self.scene.update()
+        self.scene.set_dirty(True)
 
     def update_ui_text(self):
         self.btn_play.setText(TR("▶ 开始运行"))
@@ -1114,7 +1333,12 @@ class StoryOutlineWidget(QWidget):
         self.run_mode_combo.setItemText(0, TR("自动运行"))
         self.run_mode_combo.setItemText(1, TR("手动运行"))
         self.lbl_run_mode.setText(TR("运行模式:"))
+        
+        self.lbl_playback_lang.setText(TR("播放语言:"))
+        self.update_playback_lang_combo()
+        
         self.btn_center_start.setText(TR("回到故事开始"))
+        self.btn_manage_locales.setText(TR("管理本地化"))
         self.btn_save_outline.setText(TR("保存故事线"))
         self.btn_export.setText(TR("另存为故事线"))
         self.btn_export_table.setText(TR("导出为表格"))
@@ -1407,7 +1631,7 @@ class StoryOutlineWidget(QWidget):
         self.is_running = False
         self.current_exec_node = None
         self.pending_fade_out = False
-        self.perf_panel.clear()
+        # 不再清空输出面板，保留警告/历史记录，等待下一次运行自动清理
         self.branch_widget.hide()
         self.perf_panel.show()
         for n in self.scene.nodes:
@@ -1464,10 +1688,26 @@ class StoryOutlineWidget(QWidget):
             self.perf_panel.append(f"<p><font color='#b388ff'><i>{TR('[淡出完毕]')}</i></font></p>")
             self.pending_fade_out = False
 
+        play_lang = self.playback_lang_combo.currentText()
+        is_default_lang = (play_lang == TR("默认"))
+
         if node.node_type == "Dialogue":
             d = node.data
+            
+            text = ""
+            if is_default_lang:
+                text = d.get('对话台本', '')
+            else:
+                text = d.get(f'对话台本_{play_lang}', '')
+                
+            if not str(text).strip():
+                msg = f"<p><font color='#ffff00'><b>{TR('[警告] 节点(场次:')} {d.get('场次号','')} {TR(', ID:')} {d.get('对话ID','')} {TR(')缺少本地化台本:')} {play_lang}{TR('，已停止运行。')}</b></font></p>"
+                self.stop_logic()
+                self.perf_panel.append(msg)
+                return
+
             html = f"<p><b>[{d.get('景别','')} : {d.get('场景描述','')}]</b> <span style='color:#90caf9'>({d.get('场次号','')}_{d.get('对话ID','')})</span><br>"
-            html += f"<span style='color:#ffcc80'>{d.get('说话人','')}</span> ({d.get('情绪','')}): {d.get('对话台本','')}</p>"
+            html += f"<span style='color:#ffcc80'>{d.get('说话人','')}</span> ({d.get('情绪','')}): {text}</p>"
             self.perf_panel.append(html)
             
         elif node.node_type == "Note":
@@ -1504,7 +1744,22 @@ class StoryOutlineWidget(QWidget):
             
             for i, opt in enumerate(opts):
                 opt_dict = opt if isinstance(opt, dict) else {"text": str(opt), "场次号": "", "对话ID": ""}
-                btn = QPushButton(opt_dict.get("text", ""))
+                
+                text = ""
+                if is_default_lang:
+                    text = opt_dict.get('text', '')
+                else:
+                    text = opt_dict.get(f'text_{play_lang}', '')
+                    
+                if not str(text).strip():
+                    msg = f"<p><font color='#ffff00'><b>{TR('[警告] 分支(场次:')} {opt_dict.get('场次号','')} {TR(', ID:')} {opt_dict.get('对话ID','')} {TR(')缺少本地化台本:')} {play_lang}{TR('，已停止运行。')}</b></font></p>"
+                    self.stop_logic()
+                    self.perf_panel.show()
+                    self.branch_widget.hide()
+                    self.perf_panel.append(msg)
+                    return
+                
+                btn = QPushButton(text)
                 btn.setStyleSheet(f"font-size: {font_size}px; padding: 12px; background-color: #3f51b5; border:none; border-radius:4px; margin:4px;")
                 btn.clicked.connect(lambda checked, idx=i: self.branch_selected(idx))
                 self.branch_layout.addWidget(btn)
@@ -1547,7 +1802,17 @@ class StoryOutlineWidget(QWidget):
         
         opt = self.current_exec_node.data['options'][index]
         opt_dict = opt if isinstance(opt, dict) else {"text": str(opt)}
-        self.perf_panel.append(f"<p><i>{TR('-> 选择了分支:')} {opt_dict.get('text', '')}</i></p>")
+        
+        play_lang = self.playback_lang_combo.currentText()
+        is_default_lang = (play_lang == TR("默认"))
+        
+        text = ""
+        if is_default_lang:
+            text = opt_dict.get('text', '')
+        else:
+            text = opt_dict.get(f'text_{play_lang}', '')
+            
+        self.perf_panel.append(f"<p><i>{TR('-> 选择了分支:')} {text}</i></p>")
         
         self.move_to_next_node(index)
         
@@ -1697,12 +1962,16 @@ class ScriptEditorDialog(QDialog):
         self.layout.addLayout(self.toolbar)
         
         # Table
-        self.table = ScriptTableWidget(0, 11, self)
-        self.table.setHorizontalHeaderLabels([
+        base_headers = [
             TR("功能类型"), TR("场次号"), TR("对话ID"), TR("说话人"), 
             TR("情绪"), TR("景别"), TR("场景描述"), TR("对话台本"), 
             TR("注释"), TR("播放时长"), TR("特殊参数")
-        ])
+        ]
+        self.locales = self.main_window.project_locales.copy()
+        headers = base_headers + self.locales
+        
+        self.table = ScriptTableWidget(0, len(headers), self)
+        self.table.setHorizontalHeaderLabels(headers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -1777,7 +2046,7 @@ class ScriptEditorDialog(QDialog):
         self.table.setCellWidget(row, 0, cb)
         
         self.table.blockSignals(True)
-        for i in range(1, 11):
+        for i in range(1, self.table.columnCount()):
             self.table.setItem(row, i, QTableWidgetItem(""))
         self.table.setItem(row, 9, QTableWidgetItem("1"))
         self.table.blockSignals(False)
@@ -1947,6 +2216,9 @@ class ScriptEditorDialog(QDialog):
                 1: "场次号", 2: "对话ID", 3: "说话人", 4: "情绪", 5: "景别",
                 6: "场景描述", 7: "对话台本", 8: "注释", 9: "播放时长", 10: "特殊参数"
             }
+            for i, l in enumerate(self.locales):
+                mapping[11 + i] = f"对话台本_{l}"
+                
             for col, key in mapping.items():
                 if key in data_dict:
                     item = self.table.item(r, col)
@@ -1973,6 +2245,8 @@ class ScriptEditorDialog(QDialog):
                         "对话台本": opt_dict.get('text', ''),
                         "注释": opt_dict.get('注释', '')
                     }
+                    for l in self.locales:
+                        row_data[f"对话台本_{l}"] = opt_dict.get(f"text_{l}", "")
                     add_table_row(TR("分支选项"), row_data)
             elif n_type == "Note":
                 row_data = {"对话台本": data.get("备注", ""), "播放时长": data.get("播放时长", "0")}
@@ -2047,6 +2321,10 @@ class ScriptEditorDialog(QDialog):
                 item = self.table.item(row, col)
                 return item.text().strip() if item else ""
                 
+            locale_data = {}
+            for i, l in enumerate(self.locales):
+                locale_data[f"对话台本_{l}"] = get_text(11 + i)
+                
             if node_type_str == TR("分支选项"):
                 if last_branch_idx != -1:
                     opt = {
@@ -2055,6 +2333,8 @@ class ScriptEditorDialog(QDialog):
                         "对话ID": get_text(2),
                         "注释": get_text(8)
                     }
+                    for l in self.locales:
+                        opt[f"text_{l}"] = locale_data[f"对话台本_{l}"]
                     nodes[last_branch_idx]["data"]["options"].append(opt)
                 continue
                 
@@ -2069,6 +2349,8 @@ class ScriptEditorDialog(QDialog):
                     "对话台本": get_text(7), "注释": get_text(8), "播放时长": get_text(9) or "1",
                     "注释透明度": 80
                 }
+                for l in self.locales:
+                    data[f"对话台本_{l}"] = locale_data[f"对话台本_{l}"]
             elif internal_type == "Branch":
                 data = {"options": []}
             elif internal_type == "Note":
@@ -2116,7 +2398,7 @@ class ScriptEditorDialog(QDialog):
                 
             pos_x += 220
             
-        state = {"nodes": nodes, "edges": edges}
+        state = {"nodes": nodes, "edges": edges, "locales": self.locales.copy()}
         self.main_window.list_widget.make_top_story(name, state)
         QMessageBox.information(self, TR("成功"), TR("转换成功！新故事线已添加到列表。"))
         self.accept()
@@ -2293,10 +2575,12 @@ class StoryListWidget(QWidget):
             scene.deserialize_scene(state)
             scene.save_history() 
         else:
+            self.main_window.project_locales = []
             scene.add_node("Start", QPointF(0,0))
             scene.save_history() 
             
         scene.set_dirty(False)
+        self.main_window.outline_widget.update_playback_lang_combo()
         self.main_window.outline_widget.update_title()
         self.main_window.stacked.setCurrentIndex(1)
 
@@ -2308,7 +2592,7 @@ class StoryListWidget(QWidget):
             try:
                 state = self.stories.get(name)
                 if not state:
-                    state = {"nodes": [], "edges": []}
+                    state = {"nodes": [], "edges": [], "locales": []}
                 else:
                     state = filter_export_state(state)
                 with open(file_path, "w", encoding="utf-8") as f:
@@ -2354,11 +2638,13 @@ class MainWindow(QMainWindow):
         self.resize(1280, 850)
         self.setMinimumSize(1024, 768)
         
+        self.project_locales = []
+        
         if getattr(sys, 'frozen', False):
             base_dir = os.path.dirname(sys.executable)
         else:
             base_dir = os.path.dirname(os.path.abspath(__file__))
-        icon_path = os.path.join(base_dir, "Resources", "Icon.ico")
+        icon_path = os.path.join(base_dir, "\dist\Resources", "Icon.jpg")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
             
@@ -2577,7 +2863,7 @@ if __name__ == "__main__":
     else:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         
-    icon_path = os.path.join(base_dir, "Resources", "Icon.ico")
+    icon_path = os.path.join(base_dir, "Resources", "Icon.jpg")
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
     
