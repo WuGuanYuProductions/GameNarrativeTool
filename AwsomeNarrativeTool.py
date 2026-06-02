@@ -33,17 +33,6 @@ EN_DICT = {
     "属性面板": "Property Panel",
     
     # 导出表格相关
-    "导出表格": "Export Table",
-    "场次号_对话ID": "Scene_DialogueID",
-    "类型": "Type",
-    "说话人": "Speaker",
-    "情绪": "Emotion",
-    "景别": "Shot",
-    "场景描述": "Scene Description",
-    "对话台本": "Dialogue Script",
-    "#注释": "#Note",
-    "是否有转场": "Has Transition",
-    "播放时长": "Duration",
     "单对话": "Single Dialogue",
     "选项": "Option",
     "场景提示": "Scene Prompt",
@@ -81,6 +70,14 @@ EN_DICT = {
     "选项注释": "Option Note",
     "是": "Yes",
     "否": "No",
+    "过场动画": "CutScene",
+    "VO": "VO",
+    "说话人": "Speaker",
+    "情绪": "Emotion",
+    "景别": "Shot",
+    "场景描述": "Scene Description",
+    "对话台本": "Dialogue Script",
+    "播放时长": "Duration",
     
     # 弹窗提示相关
     "提示": "Tip",
@@ -254,7 +251,7 @@ def export_to_table(parent_widget, state, default_name=""):
     file_path, _ = QFileDialog.getSaveFileName(parent_widget, TR("导出表格"), default_name, "Excel Files (*.xlsx);;CSV Files (*.csv)")
     if not file_path:
         return
-    
+        
     if not state or not state.get("nodes"):
         QMessageBox.warning(parent_widget, TR("提示"), TR("当前故事线为空或无节点数据！"))
         return
@@ -270,13 +267,13 @@ def export_to_table(parent_widget, state, default_name=""):
         if out_node not in edges_by_out:
             edges_by_out[out_node] = []
         edges_by_out[out_node].append(e)
-    
+        
     for out_node, es in edges_by_out.items():
         es.sort(key=lambda x: x["out_port"])
         for e in es:
             if out_node in adj:
                 adj[out_node].append(e["in_node"])
-            
+                
     start_nodes = [i for i, n in enumerate(nodes) if n["type"] == "Start"]
     visited = set()
     rows = []
@@ -287,9 +284,9 @@ def export_to_table(parent_widget, state, default_name=""):
             jid = n["data"].get("跳转标识", "")
             if jid:
                 jump_ends[jid] = i
-    
-    # 动态表头（支持中英文）+ 多语言本地化列
-    fieldnames = [TR("场次号_对话ID"), TR("类型"), TR("说话人"), TR("情绪"), TR("景别"), TR("场景描述"), TR("对话台本"), TR("#注释"), TR("是否有转场"), TR("播放时长")]
+                
+    # 统一使用英文表头，同时将 DialogueLine 放到 Speaker 后
+    fieldnames = ["DialogueID", "DialogueType", "Speaker", "DialogueLine", "Emotion", "Shot", "SceneDescription", "#Note", "Transition", "Duration", "VO", "CutScene"]
     fieldnames.extend(project_locales)
     
     def dfs(curr_idx):
@@ -302,17 +299,19 @@ def export_to_table(parent_widget, state, default_name=""):
         
         if n_type == "Dialogue":
             row = {f: "" for f in fieldnames}
-            row[TR("类型")] = TR("单对话")
+            row["DialogueType"] = TR("单对话")
             scene = str(data.get('场次号', '')).strip()
             did = str(data.get('对话ID', '')).strip()
-            row[TR("场次号_对话ID")] = f"{scene}_{did}" if scene and did else (scene or did)
-            row[TR("说话人")] = data.get('说话人', '')
-            row[TR("情绪")] = data.get('情绪', '')
-            row[TR("景别")] = data.get('景别', '')
-            row[TR("场景描述")] = data.get('场景描述', '')
-            row[TR("对话台本")] = data.get('对话台本', '')
-            row[TR("#注释")] = data.get('注释', '')
-            row[TR("播放时长")] = data.get('播放时长', '')
+            row["DialogueID"] = f"{scene}_{did}" if scene and did else (scene or did)
+            row["Speaker"] = data.get('说话人', '')
+            row["DialogueLine"] = data.get('对话台本', '')
+            row["Emotion"] = data.get('情绪', '')
+            row["Shot"] = data.get('景别', '')
+            row["SceneDescription"] = data.get('场景描述', '')
+            row["#Note"] = data.get('注释', '')
+            row["Duration"] = data.get('播放时长', '')
+            row["VO"] = data.get('VO', '')
+            row["CutScene"] = data.get('过场动画', '')
             for l in project_locales:
                 row[l] = data.get(f"对话台本_{l}", "")
             rows.append(row)
@@ -320,36 +319,36 @@ def export_to_table(parent_widget, state, default_name=""):
         elif n_type == "Branch":
             for opt in data.get("options", []):
                 row = {f: "" for f in fieldnames}
-                row[TR("类型")] = TR("选项")
+                row["DialogueType"] = TR("选项")
                 opt_dict = opt if isinstance(opt, dict) else {"text": str(opt), "场次号": "", "对话ID": "", "注释": ""}
                 scene = str(opt_dict.get('场次号', '')).strip()
                 did = str(opt_dict.get('对话ID', '')).strip()
-                row[TR("场次号_对话ID")] = f"{scene}_{did}" if scene and did else (scene or did)
-                row[TR("对话台本")] = opt_dict.get('text', '')
-                row[TR("#注释")] = opt_dict.get('注释', '')
+                row["DialogueID"] = f"{scene}_{did}" if scene and did else (scene or did)
+                row["DialogueLine"] = opt_dict.get('text', '')
+                row["#Note"] = opt_dict.get('注释', '')
                 for l in project_locales:
                     row[l] = opt_dict.get(f"text_{l}", "")
                 rows.append(row)
                 
         elif n_type == "ScenePrompt":
             row = {f: "" for f in fieldnames}
-            row[TR("类型")] = TR("场景提示")
-            row[TR("场次号_对话ID")] = data.get('场景提示台本', '')
-            row[TR("播放时长")] = data.get('播放时长', '')
+            row["DialogueType"] = TR("场景提示")
+            row["DialogueID"] = data.get('场景提示台本', '')
+            row["Duration"] = data.get('播放时长', '')
             rows.append(row)
             
         elif n_type == "Transition":
             row = {f: "" for f in fieldnames}
-            row[TR("类型")] = TR("转场")
-            row[TR("是否有转场")] = "1" if data.get('是否淡入淡出') == '是' else "0"
-            row[TR("播放时长")] = data.get('播放时长', '')
+            row["DialogueType"] = TR("转场")
+            row["Transition"] = "1" if data.get('是否淡入淡出') == '是' else "0"
+            row["Duration"] = data.get('播放时长', '')
             rows.append(row)
             
         if n_type == "JumpStart":
             jid = data.get("跳转标识", "")
             if jid in jump_ends:
                 dfs(jump_ends[jid])
-            
+                
         for nxt in adj.get(curr_idx, []):
             dfs(nxt)
 
@@ -357,7 +356,7 @@ def export_to_table(parent_widget, state, default_name=""):
         dfs(start_nodes[0])
     else:
         QMessageBox.warning(parent_widget, TR("警告"), TR("未找到故事开始节点，无法确定导出顺序！\n将跳过导出，直接保存为空表。"))
-    
+        
     if file_path.endswith('.csv'):
         import csv
         try:
@@ -386,7 +385,7 @@ def filter_export_state(state):
     
     valid_node_indices = [idx for idx, n in enumerate(nodes) if n["type"] in ["Start", "JumpEnd"] or idx in has_input]
     if len(valid_node_indices) == len(nodes): return state
-        
+    
     new_state = {"nodes": [], "edges": [], "locales": state.get("locales", [])}
     old_to_new = {}
     for new_idx, old_idx in enumerate(valid_node_indices):
@@ -424,10 +423,6 @@ class Port(QGraphicsItem):
         painter.setBrush(color)
         painter.setPen(QPen(QColor(30, 30, 30), 1.5))
         painter.drawEllipse(self.boundingRect())
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and self.is_output:
-            self.scene().start_drag(self, event.scenePos())
 
 class Edge(QGraphicsPathItem):
     def __init__(self, port_out, port_in):
@@ -501,7 +496,8 @@ class Node(QGraphicsItem):
             self.add_port(is_output=False)
             self.add_port(is_output=True)
             self.data = {"场次号": "A1", "对话ID": "001", "说话人": "主角", "情绪": "平静", "景别": "中景", 
-                         "场景描述": "白天", "对话台本": "你好！", "注释": "", "注释透明度": 80, "播放时长": "1"}
+                         "场景描述": "白天", "对话台本": "你好！", "注释": "", "注释透明度": 80, "播放时长": "1",
+                         "VO": "", "过场动画": ""}
         elif self.node_type == "Note":
             self.title = "备注节点"
             self.bg_color = QColor(245, 127, 23)
@@ -636,7 +632,7 @@ class Node(QGraphicsItem):
         elif self.isSelected(): 
             pen_color = QColor(255, 215, 0)
             pen_width = 2.5
-            
+        
         painter.setPen(QPen(pen_color, pen_width))
         painter.drawRoundedRect(rect, 6, 6)
 
@@ -741,7 +737,7 @@ class NodeScene(QGraphicsScene):
         state = {"nodes": [], "edges": [], "locales": []}
         if hasattr(self, "main_window"):
             state["locales"] = getattr(self.main_window, "project_locales", [])
-            
+        
         node_to_idx = {node: idx for idx, node in enumerate(self.nodes)}
         for node in self.nodes:
             state["nodes"].append({
@@ -847,7 +843,7 @@ class NodeScene(QGraphicsScene):
             self.remove_port_edges(p)
         if node in self.nodes:
             self.nodes.remove(node)
-        self.removeItem(node)
+            self.removeItem(node)
 
     def remove_edge(self, edge):
         if edge in self.edges: self.edges.remove(edge)
@@ -873,6 +869,15 @@ class NodeScene(QGraphicsScene):
             dx = max(60.0, abs(pos.x() - start.x()) * 0.5)
             path.cubicTo(start.x() + dx, start.y(), pos.x() - dx, pos.y(), pos.x(), pos.y())
             self.temp_edge.setPath(path)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            item = self.itemAt(event.scenePos(), QTransform())
+            if isinstance(item, Port) and item.is_output:
+                self.start_drag(item, event.scenePos())
+                event.accept()
+                return
+        super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self.drag_port:
@@ -901,11 +906,11 @@ class NodeScene(QGraphicsScene):
             self.temp_edge = None
         else:
             super().mouseReleaseEvent(event)
-            if event.button() == Qt.LeftButton and self.selectedItems():
-                if self.history:
-                    curr_state = self.serialize_scene()
-                    if curr_state != self.history[-1]:
-                        self.save_history()
+        if event.button() == Qt.LeftButton and self.selectedItems():
+            if self.history:
+                curr_state = self.serialize_scene()
+                if curr_state != self.history[-1]:
+                    self.save_history()
 
 
 # ==========================================
@@ -1016,7 +1021,7 @@ class PropertyPanel(QWidget):
         if not selected or not isinstance(selected[0], Node):
             self.current_node = None
             return
-        
+            
         self.current_node = selected[0]
         node = self.current_node
 
@@ -1024,7 +1029,7 @@ class PropertyPanel(QWidget):
             if key == "options": 
                 self.build_branch_ui(node)
                 continue
-            
+                
             if key.startswith("对话台本_") or key.startswith("text_"):
                 continue
                 
@@ -1113,7 +1118,7 @@ class PropertyPanel(QWidget):
             if isinstance(opt, str):
                 opt = {"text": opt, "场次号": "", "对话ID": "", "注释": ""}
                 node.data["options"][i] = opt
-            
+                
             v_layout = QVBoxLayout()
             v_layout.setContentsMargins(0, 0, 0, 5)
             v_layout.setSpacing(6)
@@ -1473,7 +1478,7 @@ class StoryOutlineWidget(QWidget):
                 new_node.data = json.loads(self.scene.clipboard["data"])
                 if new_node.node_type == "Branch": new_node.sync_branch_ports()
                 new_node.update()
-                self.scene.save_history()
+            self.scene.save_history()
 
     def toggle_breakpoint(self):
         node = self.get_selected_node()
@@ -1508,7 +1513,7 @@ class StoryOutlineWidget(QWidget):
         error_messages = []
         for node in self.scene.nodes:
             node.is_duplicate_error = False
-        
+            
         for node in self.scene.nodes:
             if node.node_type == "Dialogue":
                 scene = str(node.data.get("场次号", "")).strip()
@@ -1593,7 +1598,7 @@ class StoryOutlineWidget(QWidget):
                         d_id = opt.get("对话ID", "").strip()
                         if s_no and d_id:
                             items.append((s_no, d_id))
-            
+                            
             for k in items:
                 if k in id_map:
                     duplicates.add(id_map[k])
@@ -1631,7 +1636,6 @@ class StoryOutlineWidget(QWidget):
         self.is_running = False
         self.current_exec_node = None
         self.pending_fade_out = False
-        # 不再清空输出面板，保留警告/历史记录，等待下一次运行自动清理
         self.branch_widget.hide()
         self.perf_panel.show()
         for n in self.scene.nodes:
@@ -1738,7 +1742,7 @@ class StoryOutlineWidget(QWidget):
             self.branch_widget.show()
             for i in reversed(range(self.branch_layout.count())): 
                 self.branch_layout.itemAt(i).widget().setParent(None)
-            
+                
             opts = node.data.get("options", [])
             font_size = max(14, 24 - len(opts)*2)
             
@@ -1777,7 +1781,7 @@ class StoryOutlineWidget(QWidget):
                 if n.node_type == "JumpEnd" and n.data.get("跳转标识", "") == jid:
                     target_node = n
                     break
-            
+                    
             if not target_node:
                 self.perf_panel.append(f"<p><font color='#ff5252'><b>{TR('未找到匹配的跳转终点：')}{jid}</b></font></p>")
                 self.current_exec_node = None
@@ -1825,7 +1829,7 @@ class StoryOutlineWidget(QWidget):
         if not self.current_exec_node or port_index >= len(self.current_exec_node.outputs):
             self.current_exec_node = None
             return
-        
+            
         edges = self.current_exec_node.outputs[port_index].edges
         if edges:
             self.current_exec_node = edges[0].port_in.node
@@ -1961,11 +1965,11 @@ class ScriptEditorDialog(QDialog):
         self.toolbar.addWidget(self.btn_convert)
         self.layout.addLayout(self.toolbar)
         
-        # Table
+        # Table 增加 VO, 过场动画两列在特殊参数前
         base_headers = [
             TR("功能类型"), TR("场次号"), TR("对话ID"), TR("说话人"), 
             TR("情绪"), TR("景别"), TR("场景描述"), TR("对话台本"), 
-            TR("注释"), TR("播放时长"), TR("特殊参数")
+            TR("注释"), TR("播放时长"), "VO", TR("过场动画"), TR("特殊参数")
         ]
         self.locales = self.main_window.project_locales.copy()
         headers = base_headers + self.locales
@@ -2056,7 +2060,7 @@ class ScriptEditorDialog(QDialog):
         row = self.table.currentRow()
         if row >= 0:
             self.table.removeRow(row)
-            self.check_duplicates()
+        self.check_duplicates()
 
     def open_script(self):
         file_path, _ = QFileDialog.getOpenFileName(self, TR("打开"), "", "Script Files (*.json);;All Files (*)")
@@ -2187,7 +2191,7 @@ class ScriptEditorDialog(QDialog):
             if out_node not in edges_by_out:
                 edges_by_out[out_node] = []
             edges_by_out[out_node].append(e)
-        
+            
         for out_node, es in edges_by_out.items():
             es.sort(key=lambda x: x["out_port"])
             for e in es:
@@ -2211,13 +2215,14 @@ class ScriptEditorDialog(QDialog):
             if widget:
                 idx = widget.findText(n_type_str)
                 if idx >= 0: widget.setCurrentIndex(idx)
-            
+                
             mapping = {
                 1: "场次号", 2: "对话ID", 3: "说话人", 4: "情绪", 5: "景别",
-                6: "场景描述", 7: "对话台本", 8: "注释", 9: "播放时长", 10: "特殊参数"
+                6: "场景描述", 7: "对话台本", 8: "注释", 9: "播放时长", 
+                10: "VO", 11: "过场动画", 12: "特殊参数"
             }
             for i, l in enumerate(self.locales):
-                mapping[11 + i] = f"对话台本_{l}"
+                mapping[13 + i] = f"对话台本_{l}"
                 
             for col, key in mapping.items():
                 if key in data_dict:
@@ -2323,7 +2328,7 @@ class ScriptEditorDialog(QDialog):
                 
             locale_data = {}
             for i, l in enumerate(self.locales):
-                locale_data[f"对话台本_{l}"] = get_text(11 + i)
+                locale_data[f"对话台本_{l}"] = get_text(13 + i)
                 
             if node_type_str == TR("分支选项"):
                 if last_branch_idx != -1:
@@ -2347,6 +2352,7 @@ class ScriptEditorDialog(QDialog):
                     "场次号": get_text(1), "对话ID": get_text(2), "说话人": get_text(3),
                     "情绪": get_text(4), "景别": get_text(5), "场景描述": get_text(6),
                     "对话台本": get_text(7), "注释": get_text(8), "播放时长": get_text(9) or "1",
+                    "VO": get_text(10), "过场动画": get_text(11),
                     "注释透明度": 80
                 }
                 for l in self.locales:
@@ -2358,7 +2364,7 @@ class ScriptEditorDialog(QDialog):
             elif internal_type == "ScenePrompt":
                 data = {"场景提示台本": get_text(7), "播放时长": get_text(9) or "1"}
             elif internal_type == "Transition":
-                sp = get_text(10)
+                sp = get_text(12)
                 data = {"是否淡入淡出": sp if sp in [TR("是"), TR("否"), "是", "否"] else TR("是"), "播放时长": get_text(9) or "1"}
             elif internal_type == "JumpStart":
                 data = {"跳转标识": get_text(7), "播放时长": get_text(9) or "1"}
@@ -2390,7 +2396,7 @@ class ScriptEditorDialog(QDialog):
                         "in_node": current_idx,
                         "in_port": 0
                     })
-            
+                    
             if internal_type == "JumpStart":
                 prev_node_idx = None
             else:
@@ -2866,7 +2872,7 @@ if __name__ == "__main__":
     icon_path = os.path.join(base_dir, "Resources", "Icon.jpg")
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
-    
+        
     app.setStyle("Fusion")
     app.setStyleSheet(GLOBAL_QSS)
 
